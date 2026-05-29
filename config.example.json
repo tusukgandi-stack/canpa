@@ -1,0 +1,20 @@
+{
+  "telegramToken": "",
+  "ownerIds": [],
+  "apiKey": "",
+  "canvaBusinessUrl": "",
+  "domainId": null,
+  "headless": false,
+  "proxies": [],
+  "concurrency": 3,
+  "deleteInboxAfter": false,
+  "modes": {
+    "generate": {
+      "enableLeonardo": true
+    },
+    "login": {
+      "enableLeonardo": false,
+      "joinBusiness": true
+    }
+  }
+}
