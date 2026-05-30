@@ -4,6 +4,7 @@
 // Confirm → mulai job login.
 import { rebuildEmailsFile, saveAccount } from "../services/accounts.js";
 import { loginOne } from "../services/canva-login.js";
+import { assignLinks, commitJoins, totalRemaining } from "../services/business.js";
 import { runWithConcurrency } from "../services/concurrency.js";
 import { maskEmail } from "../services/playwright-helpers.js";
 import { shortError } from "../error-format.js";
@@ -83,6 +84,24 @@ export async function runLoginJob(ctx, emails, { getCfg }) {
     `start total=${emails.length} leonardo=${enableLeonardo} business=${joinBusiness}`
   );
 
+  // Assign link Business per akun (cuma relevan kalau joinBusiness ON).
+  const seatLimit = cfg.canvaSeatLimit || 100;
+  const linkAssign = joinBusiness
+    ? assignLinks(cfg.canvaBusinessLinks, seatLimit, emails.length)
+    : [];
+  if (joinBusiness && (cfg.canvaBusinessLinks?.length ?? 0) > 0) {
+    const remaining = totalRemaining(cfg.canvaBusinessLinks, seatLimit);
+    if (linkAssign.some((u) => u === null)) {
+      await ctx
+        .reply(
+          `⚠️ Sisa slot Business cuma ${remaining}, kurang dari ${emails.length}.\n` +
+            "Sebagian akun ga akan join tim. Tambah link via Settings → Canva Links."
+        )
+        .catch(() => {});
+    }
+  }
+  const joinCounts = {};
+
   let succeed = 0;
   const done = []; // { email, businessJoined, leonardo }
   const lineFor = (i) => `[${i + 1}]`;
@@ -102,12 +121,16 @@ export async function runLoginJob(ctx, emails, { getCfg }) {
             akun: idx + 1,
             email,
             joinBusiness,
+            inviteUrl: linkAssign[idx] || null,
             enableLeonardo,
             signal: job.signal,
             logger: (msg) => reporter.update(idx, `${lineFor(idx)} ${msg}`),
           });
           await saveAccount(result.record, "login");
           succeed++;
+          if (result.businessUrl) {
+            joinCounts[result.businessUrl] = (joinCounts[result.businessUrl] || 0) + 1;
+          }
           const flags = [];
           if (result.businessJoined) flags.push("Business");
           if (result.leonardoUserId) flags.push("Leonardo");
@@ -129,6 +152,7 @@ export async function runLoginJob(ctx, emails, { getCfg }) {
     );
 
     await rebuildEmailsFile("login").catch(() => {});
+    await commitJoins(joinCounts).catch(() => {});
     const summary = job.signal.aborted
       ? `\nDibatalkan. ${succeed} akun yang selesai tetap ke-save.`
       : `\nLogin: ${succeed}/${emails.length} berhasil`;

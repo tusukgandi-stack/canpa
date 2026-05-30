@@ -2,6 +2,7 @@
 // Logic inti di runGenerate() supaya bisa dipanggil dari slash command & menu.
 import { rebuildEmailsFile, saveAccount } from "../services/accounts.js";
 import { signupOne } from "../services/canva-signup.js";
+import { assignLinks, commitJoins, totalRemaining } from "../services/business.js";
 import { runWithConcurrency } from "../services/concurrency.js";
 import { maskEmail } from "../services/playwright-helpers.js";
 import { shortError } from "../error-format.js";
@@ -38,6 +39,25 @@ export async function runGenerate(ctx, n, { getCfg }) {
   const log = scoped(`gen-${job.id.slice(-6)}`);
   log.log(`start total=${n} concurrency=${cfg.concurrency}`);
 
+  // Assign tiap akun ke link Business (fill-then-next). Kalau ga ada link
+  // ke-set, semua null (akun tetap dibuat, cuma ga join Business).
+  const seatLimit = cfg.canvaSeatLimit || 100;
+  const linkAssign = assignLinks(cfg.canvaBusinessLinks, seatLimit, n);
+  const hasLinks = (cfg.canvaBusinessLinks?.length ?? 0) > 0;
+  if (hasLinks) {
+    const remaining = totalRemaining(cfg.canvaBusinessLinks, seatLimit);
+    log.log(`business links=${cfg.canvaBusinessLinks.length} sisa slot=${remaining}`);
+    if (linkAssign.some((u) => u === null)) {
+      await ctx
+        .reply(
+          `⚠️ Sisa slot Business cuma ${remaining}, kurang dari ${n}.\n` +
+            "Sebagian akun ga akan join tim. Tambah link via Settings → Canva Links."
+        )
+        .catch(() => {});
+    }
+  }
+  const joinCounts = {}; // { url: jumlah_berhasil_join }
+
   const items = Array.from({ length: n }, (_, i) => i + 1);
   let succeed = 0;
   let totalCredit = 0;
@@ -60,11 +80,15 @@ export async function runGenerate(ctx, n, { getCfg }) {
             cfg,
             akun,
             enableLeonardo: true,
+            inviteUrl: linkAssign[idx] || null,
             signal: job.signal,
             logger: (msg) => reporter.update(idx, `${lineFor(idx)} ${msg}`),
           });
           await saveAccount(result.record, "generate");
           succeed++;
+          if (result.businessUrl) {
+            joinCounts[result.businessUrl] = (joinCounts[result.businessUrl] || 0) + 1;
+          }
           totalCredit += result.credits?.apiCredit ?? 0;
           totalTokens += result.credits?.subscriptionTokens ?? 0;
           totalModelTokens += result.credits?.subscriptionModelTokens ?? 0;
@@ -87,6 +111,8 @@ export async function runGenerate(ctx, n, { getCfg }) {
     );
 
     await rebuildEmailsFile("generate").catch(() => {});
+    // Update counter `joined` per link (1x tulis config, hindari race worker).
+    await commitJoins(joinCounts).catch(() => {});
 
     const totalParts = [`${totalCredit.toLocaleString()} credit`];
     if (totalTokens) totalParts.push(`${totalTokens.toLocaleString()} tokens`);

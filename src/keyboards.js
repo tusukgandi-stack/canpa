@@ -16,7 +16,11 @@ export function mainMenu() {
       Markup.button.callback("📋 List", "m:list"),
       Markup.button.callback("📦 Download", "m:download"),
     ],
-    [Markup.button.callback("📜 Log", "m:log"), Markup.button.callback("🛑 Cancel job", "m:cancel")],
+    [
+      Markup.button.callback("🪑 Cek Seat", "m:checkseats"),
+      Markup.button.callback("📜 Log", "m:log"),
+      Markup.button.callback("🛑 Cancel job", "m:cancel"),
+    ],
   ]);
 }
 
@@ -50,7 +54,7 @@ export function settingsMenu(cfg) {
   return Markup.inlineKeyboard([
     [
       Markup.button.callback("🔑 API Key", "s:set:apikey"),
-      Markup.button.callback("🎨 Canva URL", "s:set:canva"),
+      Markup.button.callback("🎨 Canva Links", "m:links"),
     ],
     [
       Markup.button.callback("🌐 Domain", "s:set:domain"),
@@ -86,6 +90,23 @@ export function proxyMenu(count) {
       Markup.button.callback("🗑 Clear", "p:clear"),
     ],
     [Markup.button.callback("‹ Back", "m:home")],
+  ]);
+}
+
+// ===== Canva Links menu (multi-link Business) =====
+export function linksMenu(count) {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(`📃 List (${count})`, "l:list")],
+    [
+      Markup.button.callback("➕ Add", "l:add"),
+      Markup.button.callback("🗑 Clear", "l:clear"),
+    ],
+    [
+      Markup.button.callback("🪑 Cek Seat", "m:checkseats"),
+      Markup.button.callback("👤 Set Checker", "l:checker"),
+    ],
+    [Markup.button.callback("🔢 Seat Limit", "l:limit")],
+    [Markup.button.callback("‹ Back", "m:settings")],
   ]);
 }
 

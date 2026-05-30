@@ -10,6 +10,7 @@ import { registerGenerate } from "./commands/generate.js";
 import { registerSignup } from "./commands/signup.js";
 import { registerLogin } from "./commands/login.js";
 import { registerCredits } from "./commands/credits.js";
+import { registerCheckSeats } from "./commands/checkseats.js";
 import { registerList } from "./commands/list.js";
 import { registerDownload } from "./commands/download.js";
 import { registerCancel } from "./commands/cancel.js";
@@ -24,6 +25,7 @@ const COMMAND_LIST = [
   { command: "signup", description: "Signup Canva aja" },
   { command: "login", description: "Login akun yang udah ada" },
   { command: "credits", description: "Cek credit Leonardo" },
+  { command: "checkseats", description: "Cek sisa seat tiap link Business" },
   { command: "list", description: "Daftar akun" },
   { command: "download", description: "Download ZIP akun" },
   { command: "settings", description: "Lihat/ubah setting" },
@@ -58,6 +60,7 @@ export function createBot(token, { getCfg }) {
   registerSignup(bot, { getCfg });
   registerLogin(bot, { getCfg });
   registerCredits(bot, { getCfg });
+  registerCheckSeats(bot, { getCfg });
   registerList(bot);
   registerDownload(bot);
   registerCancel(bot);

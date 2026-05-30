@@ -11,7 +11,7 @@
 //   - signal           AbortSignal
 //   - logger           progress detail per akun
 import { chromium } from "playwright-core";
-import { fetchOtp } from "./hubify.js";
+import { fetchOtp, peekOtpTimestamp } from "./hubify.js";
 import {
   maskProxy,
   pickProxy,
@@ -45,6 +45,7 @@ export async function loginOne({
   akun,
   email,
   joinBusiness = false,
+  inviteUrl = null,
   enableLeonardo = false,
   signal,
   logger = () => {},
@@ -99,6 +100,9 @@ export async function loginOne({
       .first();
     await inputEl.waitFor({ state: "visible", timeout: 10_000 });
     await typeHuman(page, inputEl, email);
+    // Baseline OTP SEBELUM submit (email lama bisa udah punya OTP lama di inbox).
+    // OTP fresh nanti harus lebih baru dari ini.
+    const otpBaseline = await peekOtpTimestamp(cfg.apiKey, email);
     await clickSubmit(page);
 
     // 4. Early error check (sebelum buang 20s nungguin OTP)
@@ -106,13 +110,14 @@ export async function loginOne({
     await pause(page, 1000, 1500);
     await assertNoCanvaError(page);
 
-    // 5. Polling OTP via Hubify
+    // 5. Polling OTP via Hubify (tolak OTP lama via baseline)
     checkAbort(signal);
     logger(`Tunggu OTP (max ${OTP_TIMEOUT_MS / 1000}s)`);
     const code = await fetchOtp(cfg.apiKey, email, {
       timeoutMs: OTP_TIMEOUT_MS,
       intervalMs: OTP_POLL_MS,
       signal,
+      after: otpBaseline,
     });
     if (!code) throw new Error("OTP timeout");
     logger("OTP diterima");
@@ -135,14 +140,16 @@ export async function loginOne({
 
     // 8. Optional join Canva Business (FIX: selalu buka invite + klik join)
     let businessJoined = false;
-    if (joinBusiness && cfg.canvaBusinessUrl) {
+    let joinedBusinessUrl = null;
+    if (joinBusiness && inviteUrl) {
       checkAbort(signal);
       logger("Join Canva Business");
-      const joined = await joinCanvaBusiness(page, cfg.canvaBusinessUrl, {
+      const joined = await joinCanvaBusiness(page, inviteUrl, {
         signal,
       });
       logger(joined ? "Business: OK" : "Business: tombol ga ketemu");
-      businessJoined = true;
+      businessJoined = joined;
+      if (joined) joinedBusinessUrl = inviteUrl;
     }
 
     // 9. Optional Leonardo OAuth + extract token + cek credit
@@ -174,6 +181,7 @@ export async function loginOne({
       loggedInAt: new Date().toISOString(),
       leonardoUserId,
       joinedBusiness: businessJoined,
+      businessUrl: joinedBusinessUrl,
       proxy: proxy ? maskProxy(proxy) : null,
       storageState,
     };
@@ -189,6 +197,7 @@ export async function loginOne({
       email,
       leonardoUserId,
       businessJoined,
+      businessUrl: joinedBusinessUrl,
       credits,
       record,
     };

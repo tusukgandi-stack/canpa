@@ -13,7 +13,7 @@
 //   - signal               AbortSignal untuk early-exit
 //   - logger               opsional, fungsi (msg) => void untuk progress detail
 import { chromium } from "playwright-core";
-import { createInbox, deleteInbox, fetchOtp } from "./hubify.js";
+import { createInbox, deleteInbox, fetchOtp, peekOtpTimestamp } from "./hubify.js";
 import {
   maskProxy,
   pickProxy,
@@ -46,6 +46,7 @@ export async function signupOne({
   cfg,
   akun,
   enableLeonardo = false,
+  inviteUrl = null,
   signal,
   logger = () => {},
 }) {
@@ -122,6 +123,9 @@ export async function signupOne({
       .first();
     await inputEl.waitFor({ state: "visible", timeout: 10_000 });
     await typeHuman(page, inputEl, email);
+    // Baseline OTP sebelum submit — inbox signup harusnya fresh, tapi konsisten
+    // & aman kalau domain/inbox kebetulan udah punya OTP nyangkut.
+    const otpBaseline = await peekOtpTimestamp(cfg.apiKey, email);
     await clickSubmit(page);
     await clickSubmit(page);
 
@@ -137,6 +141,7 @@ export async function signupOne({
       timeoutMs: OTP_TIMEOUT_MS,
       intervalMs: OTP_POLL_MS,
       signal,
+      after: otpBaseline,
     });
     if (!code) throw new Error("OTP timeout");
     logger("OTP diterima");
@@ -177,12 +182,14 @@ export async function signupOne({
 
     // ====== /generate full flow ======
     // 8. Auto-join Canva Business (DULU, sebelum Leonardo) — FIX: selalu buka invite
-    if (cfg.canvaBusinessUrl) {
+    let joinedBusinessUrl = null;
+    if (inviteUrl) {
       checkAbort(signal);
       logger("Join Canva Business");
-      const joined = await joinCanvaBusiness(page, cfg.canvaBusinessUrl, {
+      const joined = await joinCanvaBusiness(page, inviteUrl, {
         signal,
       });
+      if (joined) joinedBusinessUrl = inviteUrl;
       logger(joined ? "Business: OK" : "Business: tombol ga ketemu");
     }
 
@@ -210,11 +217,13 @@ export async function signupOne({
       email,
       leonardoUserId,
       credits,
+      businessUrl: joinedBusinessUrl,
       record: {
         email,
         createdAt: new Date().toISOString(),
         leonardoUserId,
         proxy: proxy ? maskProxy(proxy) : null,
+        businessUrl: joinedBusinessUrl,
         leonardo: {
           accessToken: session?.accessToken ?? null,
           cognitoSub: session?.cognitoSub ?? null,

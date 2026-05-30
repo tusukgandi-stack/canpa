@@ -15,6 +15,7 @@ import { maskProxy, parseProxy } from "../services/proxy.js";
 import {
   backHome,
   countPicker,
+  linksMenu,
   mainMenu,
   proxyMenu,
   settingsMenu,
@@ -24,6 +25,7 @@ import { detach } from "../jobs.js";
 import { runGenerate } from "./generate.js";
 import { runSignup } from "./signup.js";
 import { runCredits } from "./credits.js";
+import { runCheckSeats } from "./checkseats.js";
 import { runList } from "./list.js";
 import { runDownload } from "./download.js";
 import { runCancel } from "./cancel.js";
@@ -60,7 +62,8 @@ async function showSettings(ctx, getCfg, edit = true) {
   const text =
     "Settings\n\n" +
     `API key: ${maskKey(cfg.apiKey)}\n` +
-    `Canva URL: ${cfg.canvaBusinessUrl || "(kosong)"}\n` +
+    `Canva links: ${cfg.canvaBusinessLinks?.length ?? 0} (limit ${cfg.canvaSeatLimit ?? 100}/tim)\n` +
+    `Checker: ${cfg.checkerEmail || "(kosong)"}\n` +
     `Domain: ${cfg.domainId ?? "random"}\n` +
     `Concurrency: ${cfg.concurrency}\n` +
     "\nTap tombol buat ubah:";
@@ -90,10 +93,39 @@ async function showProxy(ctx, getCfg, edit = true) {
   await ctx.reply(text, proxyMenu(count));
 }
 
+async function showLinks(ctx, getCfg, edit = true) {
+  const cfg = await getCfg();
+  const links = cfg.canvaBusinessLinks || [];
+  const limit = cfg.canvaSeatLimit || 100;
+  let text;
+  if (!links.length) {
+    text = "Canva Links — belum ada. Tap Add buat nambah link tim.";
+  } else {
+    const lines = links.map((l, i) => {
+      const joined = l.joined || 0;
+      const sisa = Math.max(0, limit - joined);
+      return `${i + 1}. ~${joined}/${limit} (sisa ~${sisa})\n   ${l.url}`;
+    });
+    text =
+      `Canva Links (${links.length}, limit ${limit}/tim)\n` +
+      `Checker: ${cfg.checkerEmail || "(kosong)"}\n\n` +
+      lines.join("\n") +
+      "\n\nAngka ~ = estimasi. Cek Seat buat hitung akurat.";
+  }
+  if (edit) {
+    try {
+      await ctx.editMessageText(text, linksMenu(links.length));
+      return;
+    } catch {
+      /* fallback */
+    }
+  }
+  await ctx.reply(text, linksMenu(links.length));
+}
+
 // Prompt input teks untuk field tertentu
 const SET_PROMPTS = {
   apikey: "Kirim Hubify API key:",
-  canva: "Kirim Canva Business URL (atau ketik - buat kosongin):",
   domain: "Kirim domain ID (angka) atau ketik random:",
   conc: "Kirim concurrency (1-20):",
 };
@@ -135,6 +167,12 @@ export function registerMenu(bot, { getCfg }) {
           case "credits":
             await ack("Mulai cek credit...");
             return detach(() => runCredits(ctx, { getCfg }));
+          case "checkseats":
+            await ack("Cek seat...");
+            return detach(() => runCheckSeats(ctx, { getCfg }));
+          case "links":
+            await ack();
+            return showLinks(ctx, getCfg, true);
           case "list":
             await ack();
             return runList(ctx);
@@ -249,6 +287,38 @@ export function registerMenu(bot, { getCfg }) {
         }
       }
 
+      // ---- Canva Links (multi-link Business) ----
+      if (ns === "l") {
+        if (a === "list") {
+          await ack();
+          return showLinks(ctx, getCfg, true);
+        }
+        if (a === "add") {
+          await ack();
+          setPending(ctx.chat.id, "link_add");
+          return ctx.reply("Kirim Canva invite URL (http/https):");
+        }
+        if (a === "clear") {
+          await updateConfig((c) => {
+            c.canvaBusinessLinks = [];
+          });
+          await ack("Link dihapus");
+          return showLinks(ctx, getCfg, true);
+        }
+        if (a === "checker") {
+          await ack();
+          setPending(ctx.chat.id, "set_checker");
+          return ctx.reply(
+            "Kirim email checker (Hubify-managed, atau ketik - buat kosongin):"
+          );
+        }
+        if (a === "limit") {
+          await ack();
+          setPending(ctx.chat.id, "set_seatlimit");
+          return ctx.reply("Kirim seat limit per tim (1-1000):");
+        }
+      }
+
       return ack();
     } catch (err) {
       await ack("Error");
@@ -279,20 +349,46 @@ export function registerMenu(bot, { getCfg }) {
         await ctx.reply(`API key di-set: ${maskKey(text)}`, backHome());
         await ctx.deleteMessage().catch(() => {});
         return;
-      case "set_canva":
-        if (text === "-") {
-          await updateConfig((c) => {
-            c.canvaBusinessUrl = "";
-          });
-          return ctx.reply("Canva URL dikosongkan.", backHome());
-        }
+      case "link_add": {
         if (!/^https?:\/\//i.test(text)) {
           return ctx.reply("URL harus diawali http:// atau https://. Coba lagi dari menu.");
         }
+        let total = 0;
+        let dup = false;
         await updateConfig((c) => {
-          c.canvaBusinessUrl = text;
+          c.canvaBusinessLinks = c.canvaBusinessLinks || [];
+          if (c.canvaBusinessLinks.some((l) => l.url === text)) dup = true;
+          else c.canvaBusinessLinks.push({ url: text, joined: 0 });
+          total = c.canvaBusinessLinks.length;
         });
-        return ctx.reply("Canva URL di-set.", backHome());
+        if (dup) return ctx.reply("Link itu udah ada.", backHome());
+        return ctx.reply(`Link ditambah (tim #${total}). Total: ${total}`, backHome());
+      }
+      case "set_checker": {
+        if (text === "-") {
+          await updateConfig((c) => {
+            c.checkerEmail = "";
+          });
+          return ctx.reply("Checker email dikosongkan.", backHome());
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) {
+          return ctx.reply("Format email ga valid. Coba lagi dari menu.");
+        }
+        await updateConfig((c) => {
+          c.checkerEmail = text;
+        });
+        return ctx.reply(`Checker email di-set: ${text}`, backHome());
+      }
+      case "set_seatlimit": {
+        const n = parseInt(text, 10);
+        if (Number.isNaN(n) || n < 1 || n > 1000) {
+          return ctx.reply("Seat limit harus 1-1000. Coba lagi dari menu.");
+        }
+        await updateConfig((c) => {
+          c.canvaSeatLimit = n;
+        });
+        return ctx.reply(`Seat limit: ${n}.`, backHome());
+      }
       case "set_domain": {
         if (/^random$/i.test(text)) {
           await updateConfig((c) => {

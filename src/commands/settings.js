@@ -1,5 +1,6 @@
-// Settings commands — /settings, /setapikey, /setcanva, /setdomain, /setconc,
-// /headless, /togglemode. Semua mutate config.json via updateConfig().
+// Settings commands — /settings, /setapikey, /setdomain, /setconc, /headless,
+// /togglemode, plus multi-link Canva Business: /addlink /listlinks /removelink
+// /clearlinks /setseatlimit /setchecker. Semua mutate config.json via updateConfig().
 import { saveConfig, updateConfig } from "../services/config.js";
 import { maskProxy } from "../services/proxy.js";
 
@@ -19,7 +20,9 @@ export function registerSettings(bot, { getCfg }) {
       "Settings",
       "",
       `apiKey: ${maskKey(cfg.apiKey)}`,
-      `canvaBusinessUrl: ${cfg.canvaBusinessUrl || "(kosong)"}`,
+      `canvaBusinessLinks: ${cfg.canvaBusinessLinks?.length ?? 0}`,
+      `canvaSeatLimit: ${cfg.canvaSeatLimit ?? 100}`,
+      `checkerEmail: ${cfg.checkerEmail || "(kosong)"}`,
       `domainId: ${cfg.domainId ?? "random"}`,
       `concurrency: ${cfg.concurrency}`,
       `headless: ${bool(cfg.headless)}`,
@@ -31,6 +34,7 @@ export function registerSettings(bot, { getCfg }) {
       `- login.enableLeonardo: ${bool(cfg.modes.login.enableLeonardo)}`,
       `- login.joinBusiness: ${bool(cfg.modes.login.joinBusiness)}`,
       "",
+      "Link: /addlink /listlinks /removelink /clearlinks /setseatlimit /setchecker",
       "signup = Canva only (no toggle)",
     ];
     await ctx.reply(lines.join("\n"));
@@ -47,21 +51,100 @@ export function registerSettings(bot, { getCfg }) {
     await ctx.deleteMessage().catch(() => {});
   });
 
-  bot.command("setcanva", async (ctx) => {
+  // ===== Multi-link Canva Business =====
+  bot.command("addlink", async (ctx) => {
     const arg = ctx.message.text.split(" ").slice(1).join(" ").trim();
-    if (!arg) {
-      await updateConfig((c) => {
-        c.canvaBusinessUrl = "";
-      });
-      return ctx.reply("✅ canvaBusinessUrl dikosongkan");
-    }
+    if (!arg) return ctx.reply("Usage: /addlink <canva_invite_url>");
     if (!/^https?:\/\//i.test(arg)) {
       return ctx.reply("URL harus diawali http:// atau https://");
     }
+    let total = 0;
+    let dup = false;
     await updateConfig((c) => {
-      c.canvaBusinessUrl = arg;
+      c.canvaBusinessLinks = c.canvaBusinessLinks || [];
+      if (c.canvaBusinessLinks.some((l) => l.url === arg)) {
+        dup = true;
+      } else {
+        c.canvaBusinessLinks.push({ url: arg, joined: 0 });
+      }
+      total = c.canvaBusinessLinks.length;
     });
-    await ctx.reply(`✅ canvaBusinessUrl set:\n${arg}`);
+    if (dup) return ctx.reply("Link itu udah ada.");
+    await ctx.reply(`✅ Link ditambah (tim #${total}).\nTotal link: ${total}`);
+  });
+
+  bot.command("listlinks", async (ctx) => {
+    const cfg = await getCfg();
+    const links = cfg.canvaBusinessLinks || [];
+    if (!links.length) return ctx.reply("Belum ada link Business. /addlink <url>");
+    const limit = cfg.canvaSeatLimit || 100;
+    const lines = links.map((l, i) => {
+      const joined = l.joined || 0;
+      const sisa = Math.max(0, limit - joined);
+      return `${i + 1}. ${l.url}\n   ~${joined}/${limit} (sisa ~${sisa})`;
+    });
+    await ctx.reply(
+      `Link Business (${links.length}, limit ${limit}/tim):\n\n${lines.join("\n")}\n\n` +
+        "Angka ~ = estimasi. /checkseats buat hitung akurat."
+    );
+  });
+
+  bot.command("removelink", async (ctx) => {
+    const arg = ctx.message.text.split(" ")[1]?.trim();
+    const idx = parseInt(arg, 10);
+    if (Number.isNaN(idx) || idx < 1) {
+      return ctx.reply("Usage: /removelink <nomor> (lihat /listlinks)");
+    }
+    let removed = null;
+    let total = 0;
+    await updateConfig((c) => {
+      c.canvaBusinessLinks = c.canvaBusinessLinks || [];
+      if (idx <= c.canvaBusinessLinks.length) {
+        removed = c.canvaBusinessLinks.splice(idx - 1, 1)[0];
+      }
+      total = c.canvaBusinessLinks.length;
+    });
+    if (!removed) return ctx.reply("Nomor ga valid. Cek /listlinks.");
+    await ctx.reply(`✅ Link #${idx} dihapus.\nSisa link: ${total}`);
+  });
+
+  bot.command("clearlinks", async (ctx) => {
+    await updateConfig((c) => {
+      c.canvaBusinessLinks = [];
+    });
+    await ctx.reply("Semua link Business dihapus.");
+  });
+
+  bot.command("setseatlimit", async (ctx) => {
+    const arg = ctx.message.text.split(" ")[1]?.trim();
+    const n = parseInt(arg, 10);
+    if (Number.isNaN(n) || n < 1 || n > 1000) {
+      return ctx.reply("Seat limit harus 1-1000. Usage: /setseatlimit <n>");
+    }
+    await updateConfig((c) => {
+      c.canvaSeatLimit = n;
+    });
+    await ctx.reply(`✅ canvaSeatLimit: ${n}`);
+  });
+
+  bot.command("setchecker", async (ctx) => {
+    const arg = ctx.message.text.split(" ")[1]?.trim();
+    if (!arg) {
+      await updateConfig((c) => {
+        c.checkerEmail = "";
+      });
+      return ctx.reply("✅ checkerEmail dikosongkan");
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(arg)) {
+      return ctx.reply("Format email ga valid.");
+    }
+    await updateConfig((c) => {
+      c.checkerEmail = arg;
+    });
+    await ctx.reply(
+      `✅ checkerEmail: ${arg}\n` +
+        "Pastikan akun ini udah join semua tim biar /checkseats bisa baca tiap tim."
+    );
   });
 
   bot.command("setdomain", async (ctx) => {

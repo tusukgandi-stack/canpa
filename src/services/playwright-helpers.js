@@ -136,7 +136,7 @@ export async function assertNoCanvaError(page) {
 // FIX: SELALU buka invite (kecuali udah di brand/join). Bug lama skip kalau di
 // canva.com/home, padahal Canva selalu redirect ke home dulu setelah signup.
 // Return true kalau tombol join ke-klik (atau udah auto-joined).
-export async function joinCanvaBusiness(page, inviteUrl, { signal } = {}) {
+export async function joinCanvaBusiness(page, inviteUrl, { signal, clickTimeoutMs = 10_000 } = {}) {
   if (!inviteUrl) return false;
   if (signal?.aborted) throw new Error("aborted");
   if (!page.url().toLowerCase().includes("brand/join")) {
@@ -148,13 +148,35 @@ export async function joinCanvaBusiness(page, inviteUrl, { signal } = {}) {
   const joined = await clickByText(
     page,
     /gabung ke tim|gabung|join team|join|terima|accept/i,
-    10_000
+    clickTimeoutMs
   );
   await pause(page, 1500, 2500);
   return joined;
 }
 
-// Leonardo OAuth dengan retry. Banyak kegagalan "persist:user kosong" itu
+// Baca jumlah anggota tim dari halaman settings/people.
+// Canva nampilin di heading: <h1 aria-label="Anggota"> Anggota <span>(38)</span> </h1>
+// (atau "Members (38)" di locale en). Return integer atau null kalau ga ketemu.
+export async function readTeamMemberCount(page) {
+  return page
+    .evaluate(() => {
+      // 1. Cari heading anggota/members yang ada angka di kurung.
+      const heads = [...document.querySelectorAll("h1, h2, [aria-label]")];
+      for (const el of heads) {
+        const label = el.getAttribute("aria-label") || "";
+        const txt = el.textContent || "";
+        if (/anggota|members/i.test(label) || /anggota|members/i.test(txt)) {
+          const m = txt.match(/\((\d[\d.,]*)\)/) || txt.match(/(\d[\d.,]*)/);
+          if (m) {
+            const n = parseInt(m[1].replace(/[.,]/g, ""), 10);
+            if (Number.isFinite(n)) return n;
+          }
+        }
+      }
+      return null;
+    })
+    .catch(() => null);
+}
 // transient (Leonardo lemot / hydration telat), jadi 1x retry naikin success
 // rate signifikan. Return leonardoUserId atau throw setelah semua attempt habis.
 export async function doLeonardoOAuth(page, { signal, attempts = 2 } = {}) {

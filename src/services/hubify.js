@@ -43,12 +43,21 @@ export async function createInbox(apiKey, { domainId, localPart, gender } = {}) 
 
 // Polling OTP — return string OTP atau null kalau timeout.
 // signal (AbortSignal) opsional — kalau abort, throw AbortError langsung.
+//
+// `after` (ISO string / Date / null): kalau di-set, OTP yang receivedAt-nya
+// <= after DIABAIKAN. Ini penting buat email yang dipakai ulang (login/checker):
+// inbox sering masih nyimpen OTP lama dari attempt sebelumnya, dan endpoint /otp
+// balikin yang terbaru-yang-ADA — bukan nunggu yang baru. Tanpa filter ini, bot
+// bakal narik OTP lama (yg udah invalid) sebelum OTP fresh dari Canva nyampe.
 export async function fetchOtp(apiKey, email, opts = {}) {
   const {
     timeoutMs = 90_000,
     intervalMs = 5_000,
     signal,
+    after = null,
   } = opts;
+  const afterMs = after ? new Date(after).getTime() : null;
+  const hasBaseline = afterMs != null && Number.isFinite(afterMs);
   const deadline = Date.now() + timeoutMs;
   let lastErr = null;
 
@@ -56,7 +65,18 @@ export async function fetchOtp(apiKey, email, opts = {}) {
     if (signal?.aborted) throw new Error("aborted");
     try {
       const data = await call(apiKey, `/inbox/${encodeURIComponent(email)}/otp`);
-      if (data?.otp) return data.otp;
+      if (data?.otp) {
+        // Tolak OTP lama (receivedAt <= baseline). Tunggu yang fresh.
+        if (hasBaseline && data.receivedAt) {
+          const ts = new Date(data.receivedAt).getTime();
+          if (Number.isFinite(ts) && ts <= afterMs) {
+            lastErr = null;
+            await sleepInterruptible(intervalMs, signal);
+            continue;
+          }
+        }
+        return data.otp;
+      }
       lastErr = null;
     } catch (e) {
       lastErr = e;
@@ -67,6 +87,18 @@ export async function fetchOtp(apiKey, email, opts = {}) {
 
   if (lastErr) throw lastErr;
   return null;
+}
+
+// Baseline buat fetchOtp: timestamp (ISO) OTP terbaru yang ADA SEKARANG di
+// inbox, atau null kalau belum ada OTP. Panggil SEBELUM trigger kirim OTP baru
+// (sebelum submit email) biar OTP fresh nanti dianggap "lebih baru" dari ini.
+export async function peekOtpTimestamp(apiKey, email) {
+  try {
+    const data = await call(apiKey, `/inbox/${encodeURIComponent(email)}/otp`);
+    return data?.otp ? data.receivedAt || null : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function deleteInbox(apiKey, email) {
