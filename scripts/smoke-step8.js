@@ -190,6 +190,7 @@ await mkdir(accountsDir, { recursive: true });
 // ---------- 4. Boot bot (config.json terisolasi) ----------
 const { createBot } = await import("../src/bot.js");
 const { tail } = await import("../src/logger.js");
+const { isJobActive } = await import("../src/jobs.js");
 
 const FAKE_TOKEN = "0:fake";
 const OWNER_ID = 999;
@@ -285,6 +286,18 @@ function fakeUpdate(text, fromId = OWNER_ID) {
 const lastReply = () => replies[replies.length - 1]?.text || "";
 const allText = () => replies.map((r) => r.text || "").join("\n");
 
+// Job sekarang fire-and-forget (detach). Tunggu sampai job selesai sebelum assert.
+async function waitJob(timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs;
+  // beri kesempatan job sempat mulai
+  await new Promise((r) => setTimeout(r, 30));
+  while (isJobActive() && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 30));
+  }
+  // beri waktu finalize() + detail reply terkirim
+  await new Promise((r) => setTimeout(r, 50));
+}
+
 // ---------- 6. Run scenarios ----------
 console.log("== /start ==");
 replies.length = 0;
@@ -364,6 +377,7 @@ signupCounter = 0;
 hubifyEmailCounter = 0;
 replies.length = 0;
 await bot.handleUpdate(fakeUpdate("/generate 4"));
+await waitJob();
 const finalGen = allText();
 assert.match(
   finalGen,
@@ -386,6 +400,7 @@ signupCounter = 100; // start from 100 supaya akun #3 trigger ga ke-pakai
 hubifyEmailCounter = 100;
 replies.length = 0;
 await bot.handleUpdate(fakeUpdate("/signup 2"));
+await waitJob();
 assert.match(allText(), /Selesai signup: 2\/2|Selesai signup: \d\/2/);
 console.log("  ok");
 
@@ -400,6 +415,7 @@ await bot.handleUpdate(fakeUpdate("acc1@hubify.me\nacc2@hubify.me"));
 assert.match(lastReply(), /Akan login 2 akun/);
 replies.length = 0;
 await bot.handleUpdate(fakeUpdate("/confirm"));
+await waitJob();
 const finalLogin = allText();
 assert.match(finalLogin, /Login: \d\/2/);
 console.log("  ok");
@@ -408,6 +424,7 @@ console.log("== /credits ==");
 mode = "credits";
 replies.length = 0;
 await bot.handleUpdate(fakeUpdate("/credits"));
+await waitJob();
 assert.match(lastReply(), /Total: \d aktif/);
 console.log("  ok");
 

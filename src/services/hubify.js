@@ -76,14 +76,15 @@ export async function deleteInbox(apiKey, email) {
 function sleepInterruptible(ms, signal) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(new Error("aborted"));
-    const t = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(t);
-        reject(new Error("aborted"));
-      },
-      { once: true }
-    );
+    let onAbort;
+    const t = setTimeout(() => {
+      if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    onAbort = () => {
+      clearTimeout(t);
+      reject(new Error("aborted"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }

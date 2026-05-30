@@ -7,7 +7,7 @@ import { loginOne } from "../services/canva-login.js";
 import { runWithConcurrency } from "../services/concurrency.js";
 import { maskEmail } from "../services/playwright-helpers.js";
 import { shortError } from "../error-format.js";
-import { endJob, isJobActive, startJob } from "../jobs.js";
+import { endJob, isJobActive, startJob, detach } from "../jobs.js";
 import { error as logError, scoped } from "../logger.js";
 import { ProgressReporter } from "../progress.js";
 import { confirmKeyboard } from "../keyboards.js";
@@ -221,6 +221,6 @@ export function registerLogin(bot, { getCfg }) {
     if (!emails) {
       return ctx.reply("Tidak ada email yang siap di-confirm. Mulai login dulu.");
     }
-    await runLoginJob(ctx, emails, { getCfg });
+    detach(() => runLoginJob(ctx, emails, { getCfg }));
   });
 }

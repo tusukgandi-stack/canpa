@@ -124,9 +124,20 @@ await writeFile(
 );
 
 const { createBot } = await import("../src/bot.js");
+const { isJobActive } = await import("../src/jobs.js");
 const bot = createBot(FAKE_TOKEN, { getCfg: configModule.loadConfig });
 bot.botInfo = { id: 0, is_bot: true, username: "fakebot", first_name: "x" };
 const cfgNow = () => configModule.loadConfig();
+
+// Job fire-and-forget — tunggu selesai sebelum assert.
+async function waitJob(timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs;
+  await new Promise((r) => setTimeout(r, 30));
+  while (isJobActive() && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 30));
+  }
+  await new Promise((r) => setTimeout(r, 50));
+}
 
 // ---------- Stub Telegram ----------
 const replies = [];
@@ -203,6 +214,7 @@ emailN = 0;
 replies.length = 0;
 edits.length = 0;
 await bot.handleUpdate(tap("n:generate:3"));
+await waitJob();
 // reporter kirim pesan progress + finalize
 const allText = [...replies.map((r) => r.text || ""), ...edits.map((e) => e.text)].join("\n");
 assert.match(allText, /Selesai: \d\/3 berhasil/, `generate via tombol harus selesai — got:\n${allText}`);
@@ -248,6 +260,7 @@ emailN = 200;
 replies.length = 0;
 edits.length = 0;
 await bot.handleUpdate(cmd("2"));
+await waitJob();
 const customText = [...replies.map((r) => r.text || ""), ...edits.map((e) => e.text)].join("\n");
 assert.match(customText, /Selesai: \d\/2 berhasil/, `custom count harus jalan — got:\n${customText}`);
 console.log("  ok");
@@ -264,6 +277,7 @@ counter = 0;
 replies.length = 0;
 edits.length = 0;
 await bot.handleUpdate(tap("c:login:yes"));
+await waitJob();
 const loginText = [...replies.map((r) => r.text || ""), ...edits.map((e) => e.text)].join("\n");
 assert.match(loginText, /Login: \d\/2/, `login via tombol harus selesai — got:\n${loginText}`);
 console.log("  ok");

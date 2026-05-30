@@ -154,11 +154,27 @@ export async function joinCanvaBusiness(page, inviteUrl, { signal } = {}) {
   return joined;
 }
 
-// Leonardo OAuth common flow — return leonardoUserId atau throw.
-// FIX: retry klik tombol "Canva" sampai URL navigasi ke consent canva.com,
-// BARU cari tombol Allow. Bug lama: klik kadang ga ngefek (React belum hydrate)
-// → nunggu Allow yang ga muncul → timeout.
-export async function doLeonardoOAuth(page, { signal } = {}) {
+// Leonardo OAuth dengan retry. Banyak kegagalan "persist:user kosong" itu
+// transient (Leonardo lemot / hydration telat), jadi 1x retry naikin success
+// rate signifikan. Return leonardoUserId atau throw setelah semua attempt habis.
+export async function doLeonardoOAuth(page, { signal, attempts = 2 } = {}) {
+  let lastErr;
+  for (let i = 1; i <= attempts; i++) {
+    if (signal?.aborted) throw new Error("aborted");
+    try {
+      return await doLeonardoOAuthOnce(page, { signal });
+    } catch (err) {
+      lastErr = err;
+      if (err?.message === "aborted") throw err;
+      if (i < attempts) await pause(page, 1500, 2500); // jeda sebelum retry
+    }
+  }
+  throw lastErr;
+}
+
+// Satu kali percobaan OAuth. FIX: retry klik tombol "Canva" sampai URL navigasi
+// ke consent canva.com, BARU cari tombol Allow.
+async function doLeonardoOAuthOnce(page, { signal } = {}) {
   if (signal?.aborted) throw new Error("aborted");
   await page.goto("https://app.leonardo.ai/auth/login", {
     waitUntil: "domcontentloaded",

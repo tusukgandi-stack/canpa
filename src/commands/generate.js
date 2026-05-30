@@ -5,7 +5,7 @@ import { signupOne } from "../services/canva-signup.js";
 import { runWithConcurrency } from "../services/concurrency.js";
 import { maskEmail } from "../services/playwright-helpers.js";
 import { shortError } from "../error-format.js";
-import { endJob, isJobActive, startJob } from "../jobs.js";
+import { endJob, isJobActive, startJob, detach } from "../jobs.js";
 import { error as logError, scoped } from "../logger.js";
 import { ProgressReporter } from "../progress.js";
 
@@ -119,9 +119,9 @@ export async function runGenerate(ctx, n, { getCfg }) {
 }
 
 export function registerGenerate(bot, { getCfg }) {
-  bot.command("generate", async (ctx) => {
+  bot.command("generate", (ctx) => {
     const arg = ctx.message.text.split(" ")[1];
     const n = Math.min(Math.max(parseInt(arg) || 1, 1), 50);
-    await runGenerate(ctx, n, { getCfg });
+    detach(() => runGenerate(ctx, n, { getCfg }));
   });
 }

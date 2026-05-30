@@ -20,6 +20,7 @@ import {
   settingsMenu,
 } from "../keyboards.js";
 import { clearPending, getPending, setPending } from "../pending-input.js";
+import { detach } from "../jobs.js";
 import { runGenerate } from "./generate.js";
 import { runSignup } from "./signup.js";
 import { runCredits } from "./credits.js";
@@ -133,13 +134,13 @@ export function registerMenu(bot, { getCfg }) {
             return showProxy(ctx, getCfg, true);
           case "credits":
             await ack("Mulai cek credit...");
-            return runCredits(ctx, { getCfg });
+            return detach(() => runCredits(ctx, { getCfg }));
           case "list":
             await ack();
             return runList(ctx);
           case "download":
             await ack("Bikin ZIP...");
-            return runDownload(ctx);
+            return detach(() => runDownload(ctx));
           case "log":
             await ack();
             return runLog(ctx);
@@ -163,8 +164,8 @@ export function registerMenu(bot, { getCfg }) {
         await ack(`Mulai ${mode} ${n}...`);
         // Hapus keyboard biar ga di-tap 2x
         await ctx.editMessageText(`${mode} ${n} akun — mulai...`).catch(() => {});
-        if (mode === "generate") return runGenerate(ctx, n, { getCfg });
-        return runSignup(ctx, n, { getCfg });
+        if (mode === "generate") return detach(() => runGenerate(ctx, n, { getCfg }));
+        return detach(() => runSignup(ctx, n, { getCfg }));
       }
 
       // ---- Konfirmasi (login) ----
@@ -184,7 +185,7 @@ export function registerMenu(bot, { getCfg }) {
           }
           await ack(`Mulai login ${emails.length}...`);
           await ctx.editMessageText(`Login ${emails.length} akun — mulai...`).catch(() => {});
-          return runLoginJob(ctx, emails, { getCfg });
+          return detach(() => runLoginJob(ctx, emails, { getCfg }));
         }
         return ack();
       }
@@ -268,8 +269,8 @@ export function registerMenu(bot, { getCfg }) {
       case "count": {
         const n = Math.min(Math.max(parseInt(text) || 0, 1), 50);
         if (!n) return ctx.reply("Angka ga valid. Coba lagi dari menu.");
-        if (p.meta.mode === "generate") return runGenerate(ctx, n, { getCfg });
-        return runSignup(ctx, n, { getCfg });
+        if (p.meta.mode === "generate") return detach(() => runGenerate(ctx, n, { getCfg }));
+        return detach(() => runSignup(ctx, n, { getCfg }));
       }
       case "set_apikey":
         await updateConfig((c) => {

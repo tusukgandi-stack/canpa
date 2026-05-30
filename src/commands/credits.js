@@ -3,7 +3,7 @@
 import { scanAccounts } from "../services/accounts.js";
 import { checkOneCredits, sumCredits } from "../services/leonardo-credits.js";
 import { maskEmail } from "../services/playwright-helpers.js";
-import { endJob, isJobActive, startJob } from "../jobs.js";
+import { endJob, isJobActive, startJob, detach } from "../jobs.js";
 import { scoped } from "../logger.js";
 import { ProgressReporter } from "../progress.js";
 
@@ -70,5 +70,5 @@ export async function runCredits(ctx, { getCfg }) {
 }
 
 export function registerCredits(bot, { getCfg }) {
-  bot.command("credits", (ctx) => runCredits(ctx, { getCfg }));
+  bot.command("credits", (ctx) => detach(() => runCredits(ctx, { getCfg })));
 }
