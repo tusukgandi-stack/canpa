@@ -28,6 +28,7 @@ export async function runSignup(ctx, n, { getCfg }) {
 
   const items = Array.from({ length: n }, (_, i) => i + 1);
   let succeed = 0;
+  const done = [];
   const lineFor = (i) => `[${i + 1}]`;
 
   try {
@@ -47,8 +48,9 @@ export async function runSignup(ctx, n, { getCfg }) {
             signal: job.signal,
             logger: (msg) => reporter.update(idx, `${lineFor(idx)} ${msg}`),
           });
-          await saveAccount(result.record);
+          await saveAccount(result.record, "signup");
           succeed++;
+          done.push(result.email);
           reporter.update(idx, `${lineFor(idx)} ✓ ${maskEmail(result.email)}`);
           log.log(`[${akun}] OK ${result.email}`);
         } catch (err) {
@@ -62,12 +64,17 @@ export async function runSignup(ctx, n, { getCfg }) {
       job.signal
     );
 
-    await rebuildEmailsFile().catch(() => {});
+    await rebuildEmailsFile("signup").catch(() => {});
 
     const summary = job.signal.aborted
       ? `\nDibatalkan. ${succeed} akun yang selesai tetap ke-save.`
       : `\nSelesai signup: ${succeed}/${n} berhasil (Canva only)`;
     await reporter.finalize(summary);
+
+    if (done.length) {
+      const detail = done.map((e, i) => `${i + 1}. ${e}`).join("\n");
+      await ctx.reply(`Detail akun (signup):\n\n${detail}`).catch(() => {});
+    }
   } catch (err) {
     logError("signup", "fatal:", err);
     await ctx.reply(`Job error: ${err.message}`).catch(() => {});

@@ -283,6 +283,7 @@ function fakeUpdate(text, fromId = OWNER_ID) {
 }
 
 const lastReply = () => replies[replies.length - 1]?.text || "";
+const allText = () => replies.map((r) => r.text || "").join("\n");
 
 // ---------- 6. Run scenarios ----------
 console.log("== /start ==");
@@ -363,12 +364,14 @@ signupCounter = 0;
 hubifyEmailCounter = 0;
 replies.length = 0;
 await bot.handleUpdate(fakeUpdate("/generate 4"));
-const finalGen = lastReply();
+const finalGen = allText();
 assert.match(
   finalGen,
   /Selesai: 3\/4 berhasil|Selesai: 4\/4|Selesai: \d\/4/,
   `gak ada summary — got: ${finalGen}`
 );
+assert.match(finalGen, /Detail akun \(generate\)/, "harus ada detail akun unmasked");
+assert.match(finalGen, /fakeacc1@hubify\.me/, "email harus unmasked di detail");
 console.log("  ok");
 
 console.log("== /list ==");
@@ -383,7 +386,7 @@ signupCounter = 100; // start from 100 supaya akun #3 trigger ga ke-pakai
 hubifyEmailCounter = 100;
 replies.length = 0;
 await bot.handleUpdate(fakeUpdate("/signup 2"));
-assert.match(lastReply(), /Selesai signup: 2\/2|Selesai signup: \d\/2/);
+assert.match(allText(), /Selesai signup: 2\/2|Selesai signup: \d\/2/);
 console.log("  ok");
 
 console.log("== /login flow (slash /confirm) ==");
@@ -397,7 +400,7 @@ await bot.handleUpdate(fakeUpdate("acc1@hubify.me\nacc2@hubify.me"));
 assert.match(lastReply(), /Akan login 2 akun/);
 replies.length = 0;
 await bot.handleUpdate(fakeUpdate("/confirm"));
-const finalLogin = lastReply();
+const finalLogin = allText();
 assert.match(finalLogin, /Login: \d\/2/);
 console.log("  ok");
 

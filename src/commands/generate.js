@@ -43,6 +43,7 @@ export async function runGenerate(ctx, n, { getCfg }) {
   let totalCredit = 0;
   let totalTokens = 0;
   let totalModelTokens = 0;
+  const done = []; // { email, credits } untuk summary akhir (unmasked)
   const lineFor = (i) => `[${i + 1}]`;
 
   try {
@@ -62,11 +63,12 @@ export async function runGenerate(ctx, n, { getCfg }) {
             signal: job.signal,
             logger: (msg) => reporter.update(idx, `${lineFor(idx)} ${msg}`),
           });
-          await saveAccount(result.record);
+          await saveAccount(result.record, "generate");
           succeed++;
           totalCredit += result.credits?.apiCredit ?? 0;
           totalTokens += result.credits?.subscriptionTokens ?? 0;
           totalModelTokens += result.credits?.subscriptionModelTokens ?? 0;
+          done.push({ email: result.email, credits: result.credits });
           const credLabel = result.credits ? ` — ${fmtCredit(result.credits)}` : "";
           reporter.update(
             idx,
@@ -84,7 +86,7 @@ export async function runGenerate(ctx, n, { getCfg }) {
       job.signal
     );
 
-    await rebuildEmailsFile().catch(() => {});
+    await rebuildEmailsFile("generate").catch(() => {});
 
     const totalParts = [`${totalCredit.toLocaleString()} credit`];
     if (totalTokens) totalParts.push(`${totalTokens.toLocaleString()} tokens`);
@@ -95,6 +97,19 @@ export async function runGenerate(ctx, n, { getCfg }) {
       ? `\nDibatalkan. ${succeed} akun yang selesai tetap ke-save.`
       : `\nSelesai: ${succeed}/${n} berhasil — Total ${totalParts.join(" · ")}`;
     await reporter.finalize(summary);
+
+    // Kirim detail akun lengkap (email unmasked) biar ga perlu /list
+    if (done.length) {
+      const detail = done
+        .map((d, i) => {
+          const c = d.credits ? ` — ${fmtCredit(d.credits)}` : "";
+          return `${i + 1}. ${d.email}${c}`;
+        })
+        .join("\n");
+      await ctx
+        .reply(`Detail akun (generate):\n\n${detail}`)
+        .catch(() => {});
+    }
   } catch (err) {
     logError("gen", "fatal:", err);
     await ctx.reply(`Job error: ${err.message}`).catch(() => {});

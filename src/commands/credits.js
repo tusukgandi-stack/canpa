@@ -11,9 +11,17 @@ export async function runCredits(ctx, { getCfg }) {
   if (isJobActive()) {
     return ctx.reply("Job lain lagi jalan. Batalin dulu (Cancel / /cancel).");
   }
-  const accounts = await scanAccounts();
-  if (!accounts.length) {
+  const all = await scanAccounts();
+  if (!all.length) {
     return ctx.reply("Belum ada akun. Generate dulu.");
+  }
+  // Cuma akun yang punya Leonardo yang relevan buat cek credit.
+  // Signup (Canva only) di-skip karena emang ga ada Leonardo.
+  const accounts = all.filter((a) => a.leonardoUserId || a.category === "generate");
+  if (!accounts.length) {
+    return ctx.reply(
+      "Ga ada akun ber-Leonardo buat dicek. Signup (Canva only) ga punya credit Leonardo."
+    );
   }
 
   const cfg = await getCfg();

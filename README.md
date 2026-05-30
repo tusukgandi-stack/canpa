@@ -166,3 +166,23 @@ Param DataImpulse berguna:
 - Telegram only, no web dashboard
 - `headless: false` wajib di prod
 - Single-user (whitelist `ownerIds`)
+
+## Layout penyimpanan akun
+
+Akun disimpan terpisah per kategori biar gampang dibedain:
+
+```
+accounts/
+├─ generate/   ← /generate: Canva + Leonardo + credit (ada leonardo + credits)
+├─ signup/     ← /signup: Canva only
+└─ login/      ← /login: akun existing yang di-login ulang
+```
+
+Tiap kategori punya `emails.txt` sendiri. Tiap file `<email>.json` berisi
+`storageState` (cookies+localStorage), dan khusus generate juga simpan
+`leonardo.accessToken` + `creditRequest` biar `/credits` bisa cek cepat tanpa
+buka browser.
+
+Tiap job selesai (`/generate`, `/signup`, `/login`), bot langsung kirim detail
+akun (email lengkap) di chat — ga perlu `/list` lagi. `/list` mengelompokkan
+semua akun per kategori.

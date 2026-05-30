@@ -84,6 +84,7 @@ export async function runLoginJob(ctx, emails, { getCfg }) {
   );
 
   let succeed = 0;
+  const done = []; // { email, businessJoined, leonardo }
   const lineFor = (i) => `[${i + 1}]`;
 
   try {
@@ -105,11 +106,12 @@ export async function runLoginJob(ctx, emails, { getCfg }) {
             signal: job.signal,
             logger: (msg) => reporter.update(idx, `${lineFor(idx)} ${msg}`),
           });
-          await saveAccount(result.record);
+          await saveAccount(result.record, "login");
           succeed++;
           const flags = [];
           if (result.businessJoined) flags.push("Business");
           if (result.leonardoUserId) flags.push("Leonardo");
+          done.push({ email, flags });
           reporter.update(
             idx,
             `${lineFor(idx)} ✓ ${maskEmail(email)}${flags.length ? ` — ${flags.join(" + ")}` : ""}`
@@ -126,11 +128,21 @@ export async function runLoginJob(ctx, emails, { getCfg }) {
       job.signal
     );
 
-    await rebuildEmailsFile().catch(() => {});
+    await rebuildEmailsFile("login").catch(() => {});
     const summary = job.signal.aborted
       ? `\nDibatalkan. ${succeed} akun yang selesai tetap ke-save.`
       : `\nLogin: ${succeed}/${emails.length} berhasil`;
     await reporter.finalize(summary);
+
+    if (done.length) {
+      const detail = done
+        .map(
+          (d, i) =>
+            `${i + 1}. ${d.email}${d.flags.length ? ` — ${d.flags.join(" + ")}` : ""}`
+        )
+        .join("\n");
+      await ctx.reply(`Detail akun (login):\n\n${detail}`).catch(() => {});
+    }
   } catch (err) {
     logError("login", "fatal:", err);
     await ctx.reply(`Job error: ${err.message}`).catch(() => {});
